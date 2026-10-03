@@ -1,0 +1,11 @@
+# secrets never go in the repo
+.env
+.env.*
+*.pem
+*.key
+# local noise
+.DS_Store
+__pycache__/
+*.pyc
+node_modules/
+.venv/
