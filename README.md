@@ -26,7 +26,7 @@ cat RUN.md
 
 ## Team
 
-M Safdar
+Code Voyagers
 
 ## License
 
