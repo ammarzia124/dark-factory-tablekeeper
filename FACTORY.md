@@ -80,6 +80,22 @@ moves on where it can. An unattended run has to end, and an honest gap beats a l
 the implementer runs earlier checks with the new ones, and the reviewer re-checks earlier
 behaviour. Accepted work is frozen.
 
+**The reviewer prepares while the implementer builds.** The coordinator sends the reviewer
+the same complete requirements as advance notice, in the same turn as the implementer's
+dispatch. The reviewer builds its reference model and test generators before any code
+exists, so review starts the moment a revision lands instead of after. In the judged run
+the reviewer reported ready one to two minutes after each dispatch.
+
+**No chatter.** A seat speaks only to hand off, report a result, reject, or raise a blocker.
+No acknowledgements, no "waiting for". Every message costs a turn on every seat it reaches.
+
+**Fast checks while building, full checks before handing off.** The implementer iterates on
+its own quick tests and runs the slow, isolated conformance run once before each handoff.
+The reviewer runs it again independently.
+
+**Seats stage only what they changed, by name.** Never the whole tree, so no seat's commit
+can carry someone else's uncommitted work. This rule came from a failed practice run (below).
+
 **One model for every seat.** All three seats run Sonnet. The factory's reliability comes
 from its structure (complete handoffs, an independent reviewer with its own model of the
 spec, evidence tied to commits), not from a bigger model in one seat, and one model keeps
@@ -96,9 +112,36 @@ cost and rate limits predictable over a long unattended run.
 | A seat is missing from the room | Coordinator checks participants before the first handoff | Adds that exact seat and retries; records it if that fails |
 | An endless fix loop | Five-round cap | Unit recorded incomplete with evidence; run continues |
 | Truncated context | Numbered multi-part handoffs, final part marked, receipt confirmed | Coordinator resends the missing part |
+| A defect found at acceptance that does not block the unit | Reviewer lists it as an observation with the spec clause | Coordinator carries it as an open problem into the next unit's handoff; the reviewer re-verifies the fix |
 
-A bad result we caught: _TBD after the judged run: quote one rejection from `room.json`
-and the commit that fixed it._
+### Bad results it caught in the judged run
+
+All four units were accepted on the first review, so no unit needed a repair round. The
+reviewer still found real defects that every shipped check passed, and the coordinator's
+carry-forward rule got them fixed:
+
+- **Stage 1 → fixed in stage 2.** PATCH and multi-booking moves on a cancelled or past-cutoff
+  booking with an invalid party size answered 422 instead of the conflict the spec puts first.
+  The coordinator carried it into the stage 2 handoff, and the implementer fixed it there.
+- **Stage 3 → fixed in stage 4.** A booking that was cancelled before an export came back from
+  import with a history ending in `created`, but the spec says a cancelled reservation's
+  history ends with `cancelled`. The reviewer found it by importing a real export from an
+  older stage's container. The coordinator carried it into stage 4. The implementer added the
+  synthesized entry, and the reviewer confirmed it: `created` then `cancelled`, revision 2.
+
+Both are quoted, with the revisions involved, in `room.json` (the reviewer's verdicts for
+`89575f24` and `f97f37e6`, and the coordinator's final report).
+
+What the reviewer ran before each acceptance, all against the Docker image under the judged
+limits (2 vCPU, 2 GiB, no network):
+
+- differential fuzzing against its own spec model (6 to 13 recorded seeds per stage, 0
+  differences)
+- 20- to 50-way concurrent races
+- real exports from older stages' containers imported into the new one
+- browser runs at 375 px and 1280 px with a contrast audit
+- for stage 4, an independent brute-force planner over about 390 scenarios (74 infeasible),
+  with 0 differences
 
 ## What we tried that failed
 
@@ -118,17 +161,51 @@ and the commit that fixed it._
 
 ## Measured costs
 
-_Filled in after the judged run from the coordinator's round records, Band Desktop's usage
-view and the Anthropic console._
+The judged run is room `787bfb21-ee7b-4f55-9140-3ba4dafe786c` ("Development agents team",
+`room.json`), from 2026-10-03 14:53 to 15:59 UTC. It had one human message, the task. The
+times are from the coordinator's round records in its final report. The shipped-check
+results are from our own isolated rerun of `harness run --all --mode isolated` on the
+pushed repository.
 
-| Stage | Wall-clock | Repair rounds | Commits | Input tokens | Output tokens | Spend (USD) | Claimed (shipped checks) |
-|---|---|---|---|---|---|---|---|
-| 1 | | | | | | | |
-| 2 | | | | | | | |
-| 3 | | | | | | | |
-| 4 | | | | | | | |
-| **Total** | | | | | | | |
+| Stage | Wall-clock | Repair rounds | Stage commits | Shipped checks passed (isolated) | Claimed |
+|---|---|---|---|---|---|
+| 1 | ~8 min | 0 | 1 (`70955a9`) | suite 1: 120/120 | stage 1 |
+| 2 | ~26 min | 0 | 1 (`a773ef4`) | suites 1–2: 120/120, 25/25 | stage 2 |
+| 3 | ~18 min | 0 | 1 (`89575f2`) | suites 1–3: 120/120, 25/25, 7/7 | stage 3 |
+| 4 | ~13 min | 0 | 1 (`f97f37e`) | suites 1–4: 120/120, 25/25, 7/7, 6/6 | stage 4 |
+| **Total** | **65 min** | **0** | **4** | every folder claims its own stage and fails the next suite, as required | **4 of 4** |
+
+Model spend for the judged run, per seat. These are `band usage` estimates at list prices,
+not a bill; the seats ran on a Claude Max subscription. Most of the tokens are cached prompt
+reads from re-pasting complete specs into every handoff.
+
+| Seat | Tokens | Estimated USD |
+|---|---|---|
+| coordinator | 2.5 M | $1.02 |
+| implementer | 11.8 M | $5.06 |
+| reviewer | 14.4 M | $5.07 |
+| **Total** | **28.8 M** | **$11.16** |
+
+Building the factory also cost a practice run of all four stages ($15.03, discarded; see
+above) and three rehearsal rooms for handles and models ($3.09).
+
+The reviewer spends as much as the implementer, which is the design working as intended.
+Half the budget goes to independently trying to break the work.
 
 ## Limitations
 
-_TBD after the judged run._
+- **Hidden tests.** Shipped checks cover 83% of stage 1 but only 41%, 11% and 21% of stages
+  2 to 4. Our evidence for the rest is the reviewer's spec-derived testing, not the judges'
+  suite.
+- **First-time acceptance.** The reviewer accepted every unit on its first review, and both
+  defects it found were fixed one stage later. Accepted folders are frozen, so `stage-3/`
+  still carries the imported-cancellation history gap that `stage-4/` fixed. A stricter
+  reviewer rule (reject any spec deviation, however small) would trade time for that.
+- **Numbers sent as floats.** The service is Node.js, which cannot tell `2.0` from `2`, so a
+  whole-number float is accepted where the spec asks for an integer.
+- **Not checked by the reviewer:** sustained memory use, browsers other than Chromium, and a
+  browser session carried over from an older stage's UI. The worst-case replan size was
+  timed only by the implementer (about 3 ms).
+- **Final report addressee.** The coordinator posted its final report to the reviewer's
+  handle rather than to the human. The content is complete, but the mandate could name the
+  recipient.
